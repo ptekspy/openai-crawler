@@ -68,10 +68,8 @@ export function loadConfig(): CrawlerConfig {
       }
     : undefined;
 
-  const prioritySubreddits = unique([
-    ...parseStringArrayEnv(process.env.CRAWLER_PRIORITY_SUBREDDITS),
-    ...defaults.prioritySubreddits,
-  ]);
+  const envPrioritySubreddits = parseStringArrayEnv(process.env.CRAWLER_PRIORITY_SUBREDDITS);
+  const prioritySubreddits = unique(envPrioritySubreddits.length ? envPrioritySubreddits : defaults.prioritySubreddits);
 
   return {
     authStatePath: process.env.REDDIT_AUTH_STATE || ".auth/reddit.json",
