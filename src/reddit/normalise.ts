@@ -1,4 +1,4 @@
-import type { CapturedPayload, NormalizedPost } from "../types.js";
+import type { CapturedPayload, NormalizedPost, NormalizedSubreddit, NormalizedUser } from "../types.js";
 import { asBoolean, asNumber, asString } from "../utils.js";
 
 const MAX_OBJECTS_TO_SCAN = 20_000;
@@ -48,6 +48,14 @@ function unwrapCandidate(record: Record<string, unknown>): Record<string, unknow
   return record;
 }
 
+function cleanSubreddit(value: string | undefined) {
+  return value?.replace(/^r\//i, "").trim();
+}
+
+function cleanUser(value: string | undefined) {
+  return value?.replace(/^u\//i, "").trim();
+}
+
 function looksLikePost(record: Record<string, unknown>): boolean {
   const candidate = unwrapCandidate(record);
   const title = firstString(candidate, [["title"], ["postTitle"]]);
@@ -60,6 +68,17 @@ function looksLikePost(record: Record<string, unknown>): boolean {
   ]);
 
   return Boolean(title && id && (subreddit || firstString(candidate, [["permalink"], ["url"]])));
+}
+
+function looksLikeSubreddit(record: Record<string, unknown>): boolean {
+  const candidate = unwrapCandidate(record);
+  const name = firstString(candidate, [["display_name"], ["displayName"], ["name"], ["subredditName"], ["communityName"]]);
+  const hasSubredditFields =
+    firstNumber(candidate, [["subscribers"], ["subscriberCount"], ["members"], ["memberCount"]]) !== undefined ||
+    firstBoolean(candidate, [["over18"], ["over_18"], ["isNsfw"], ["nsfw"]]) !== undefined ||
+    firstString(candidate, [["public_description"], ["publicDescription"], ["description"], ["title"]]) !== undefined;
+
+  return Boolean(name && hasSubredditFields);
 }
 
 function normaliseId(id: string | undefined, title: string | undefined, permalink: string | undefined): string | undefined {
@@ -114,8 +133,8 @@ function normalisePost(record: Record<string, unknown>): NormalizedPost | undefi
     id,
     thingId: rawId?.startsWith("t3_") ? rawId : rawId ? `t3_${rawId}` : undefined,
     title,
-    author,
-    subreddit: subreddit?.replace(/^r\//i, ""),
+    author: cleanUser(author),
+    subreddit: cleanSubreddit(subreddit),
     permalink: permalink?.startsWith("http") ? permalink : permalink ? `https://www.reddit.com${permalink}` : undefined,
     url,
     createdUtc: firstNumber(candidate, [["created_utc"], ["createdUtc"], ["createdAt"], ["created"]]),
@@ -130,11 +149,43 @@ function normalisePost(record: Record<string, unknown>): NormalizedPost | undefi
   };
 }
 
-function scan(value: unknown, results: NormalizedPost[], seenObjects: WeakSet<object>, seenIds: Set<string>, counter: { count: number }) {
+function normaliseSubreddit(record: Record<string, unknown>): NormalizedSubreddit | undefined {
+  const candidate = unwrapCandidate(record);
+  const rawName = firstString(candidate, [["display_name"], ["displayName"], ["name"], ["subredditName"], ["communityName"]]);
+  const name = cleanSubreddit(rawName);
+  if (!name) return undefined;
+
+  return {
+    name,
+    title: firstString(candidate, [["title"], ["communityTitle"]]),
+    description: firstString(candidate, [["public_description"], ["publicDescription"], ["description"], ["communityDescription"]]),
+    members: firstNumber(candidate, [["subscribers"], ["subscriberCount"], ["members"], ["memberCount"]]),
+    activeUsers: firstNumber(candidate, [["active_user_count"], ["activeUserCount"], ["activeUsers"]]),
+    createdUtc: firstNumber(candidate, [["created_utc"], ["createdUtc"], ["created"]]),
+    over18: firstBoolean(candidate, [["over18"], ["over_18"], ["isNsfw"], ["nsfw"]]),
+    url: firstString(candidate, [["url"], ["communityUrl"]]),
+    rawSource: "reddit-network",
+    raw: candidate,
+  };
+}
+
+function scan(
+  value: unknown,
+  results: {
+    posts: NormalizedPost[];
+    subreddits: NormalizedSubreddit[];
+    users: NormalizedUser[];
+  },
+  seenObjects: WeakSet<object>,
+  seenIds: Set<string>,
+  seenSubreddits: Set<string>,
+  seenUsers: Set<string>,
+  counter: { count: number },
+) {
   if (counter.count > MAX_OBJECTS_TO_SCAN) return;
 
   if (Array.isArray(value)) {
-    for (const item of value) scan(item, results, seenObjects, seenIds, counter);
+    for (const item of value) scan(item, results, seenObjects, seenIds, seenSubreddits, seenUsers, counter);
     return;
   }
 
@@ -147,24 +198,52 @@ function scan(value: unknown, results: NormalizedPost[], seenObjects: WeakSet<ob
     const post = normalisePost(value);
     if (post && !seenIds.has(post.id)) {
       seenIds.add(post.id);
-      results.push(post);
+      results.posts.push(post);
+
+      if (post.author && !seenUsers.has(post.author.toLowerCase())) {
+        seenUsers.add(post.author.toLowerCase());
+        results.users.push({ username: post.author, sourcePostId: post.id, sourceSubreddit: post.subreddit });
+      }
+
+      if (post.subreddit && !seenSubreddits.has(post.subreddit.toLowerCase())) {
+        seenSubreddits.add(post.subreddit.toLowerCase());
+        results.subreddits.push({ name: post.subreddit, over18: post.isNsfw, rawSource: "post-discovery" });
+      }
+    }
+  }
+
+  if (looksLikeSubreddit(value)) {
+    const subreddit = normaliseSubreddit(value);
+    if (subreddit && !seenSubreddits.has(subreddit.name.toLowerCase())) {
+      seenSubreddits.add(subreddit.name.toLowerCase());
+      results.subreddits.push(subreddit);
     }
   }
 
   for (const inner of Object.values(value)) {
-    scan(inner, results, seenObjects, seenIds, counter);
+    scan(inner, results, seenObjects, seenIds, seenSubreddits, seenUsers, counter);
   }
 }
 
-export function normaliseCapturedPosts(payloads: CapturedPayload[]): NormalizedPost[] {
-  const results: NormalizedPost[] = [];
+export function normaliseCaptured(payloads: CapturedPayload[]) {
+  const results = {
+    posts: [] as NormalizedPost[],
+    subreddits: [] as NormalizedSubreddit[],
+    users: [] as NormalizedUser[],
+  };
   const seenObjects = new WeakSet<object>();
   const seenIds = new Set<string>();
+  const seenSubreddits = new Set<string>();
+  const seenUsers = new Set<string>();
   const counter = { count: 0 };
 
   for (const payload of payloads) {
-    scan(payload.json, results, seenObjects, seenIds, counter);
+    scan(payload.json, results, seenObjects, seenIds, seenSubreddits, seenUsers, counter);
   }
 
   return results;
+}
+
+export function normaliseCapturedPosts(payloads: CapturedPayload[]): NormalizedPost[] {
+  return normaliseCaptured(payloads).posts;
 }
