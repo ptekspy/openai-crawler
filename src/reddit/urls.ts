@@ -10,6 +10,8 @@ export function redditUrlForTask(task: CrawlTask): string {
       return `https://www.reddit.com/${task.sort}/`;
     case "subreddit":
       return `https://www.reddit.com/r/${cleanTarget(task.target)}/${task.sort}/`;
+    case "subredditDetails":
+      return `https://www.reddit.com/r/${cleanTarget(task.target)}/about/`;
     case "user":
       return `https://www.reddit.com/user/${cleanTarget(task.target)}/submitted/`;
   }
