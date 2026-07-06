@@ -51,6 +51,16 @@ pnpm crawl:once
 pnpm crawl
 ```
 
+## Save a Reddit HTML snapshot
+
+This is only for debugging/tuning selectors:
+
+```bash
+pnpm snapshot https://www.reddit.com/r/daresgonewild/new/
+```
+
+Snapshots are saved to `snapshots/` and ignored by git.
+
 ## Editable priority targets
 
 The default 10 priority targets live in:
@@ -154,7 +164,7 @@ Reddit HTML is useful only if:
 - a subreddit page renders data that is not present in captured JSON
 - we need to tune the DOM fallback selectors
 
-A saved sample from one loaded subreddit page would be useful later, but it is not required for this first version.
+A saved sample from one loaded subreddit page would be useful later, but it is not required for this first version. Use `pnpm snapshot <reddit-url>` when we need one.
 
 ## Notes
 
