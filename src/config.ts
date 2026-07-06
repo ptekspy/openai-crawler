@@ -76,6 +76,7 @@ export function loadConfig(): CrawlerConfig {
     statePath: process.env.CRAWLER_STATE_PATH || "data/state.json",
     dashboardHost: process.env.CRAWLER_DASHBOARD_HOST || "127.0.0.1",
     dashboardPort: intFromEnv(process.env.CRAWLER_DASHBOARD_PORT, 8788),
+    dashboardMasterPassword: optional(process.env.CRAWLER_DASHBOARD_MASTER_PASSWORD),
     headless: boolFromEnv(process.env.CRAWLER_HEADLESS, true),
     scrollDelayMs: intFromEnv(process.env.CRAWLER_SCROLL_DELAY_MS, 1200),
     scrollSteps: intFromEnv(process.env.CRAWLER_SCROLL_STEPS, 8),
