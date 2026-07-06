@@ -6,6 +6,7 @@ function unique(values: string[]): string[] {
 
 function taskKey(task: CrawlTask): string {
   if (task.type === "home") return `home:${task.sort}`;
+  if (task.type === "subredditDetails") return `subreddit-details:${task.target.toLowerCase()}`;
   return `${task.type}:${task.target.toLowerCase()}:${task.sort}`;
 }
 
@@ -30,7 +31,7 @@ export function buildTasks(config: CrawlerConfig, apiTargets: ApiTargetsResponse
         type: "subreddit",
         target: subreddit,
         sort,
-        source: "priority",
+        source: "main",
       });
     }
   }
@@ -39,7 +40,7 @@ export function buildTasks(config: CrawlerConfig, apiTargets: ApiTargetsResponse
     pushUnique(tasks, seen, {
       type: "home",
       sort,
-      source: "priority",
+      source: "main",
     });
   }
 
