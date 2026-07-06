@@ -5,6 +5,7 @@ dist/
 !.env.example
 .auth/
 .playwright/
+data/
 snapshots/
 test-results/
 playwright-report/
