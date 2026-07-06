@@ -72,13 +72,16 @@ function looksLikePost(record: Record<string, unknown>): boolean {
 
 function looksLikeSubreddit(record: Record<string, unknown>): boolean {
   const candidate = unwrapCandidate(record);
-  const name = firstString(candidate, [["display_name"], ["displayName"], ["name"], ["subredditName"], ["communityName"]]);
+  const rawName = firstString(candidate, [["display_name"], ["displayName"], ["subredditName"], ["communityName"]]);
+  const name = cleanSubreddit(rawName);
+  if (!name || /^t[1-6]_/.test(name)) return false;
+
   const hasSubredditFields =
     firstNumber(candidate, [["subscribers"], ["subscriberCount"], ["members"], ["memberCount"]]) !== undefined ||
-    firstBoolean(candidate, [["over18"], ["over_18"], ["isNsfw"], ["nsfw"]]) !== undefined ||
-    firstString(candidate, [["public_description"], ["publicDescription"], ["description"], ["title"]]) !== undefined;
+    firstString(candidate, [["public_description"], ["publicDescription"], ["communityDescription"]]) !== undefined ||
+    firstBoolean(candidate, [["over18"], ["over_18"], ["isNsfw"], ["nsfw"]]) !== undefined;
 
-  return Boolean(name && hasSubredditFields);
+  return hasSubredditFields;
 }
 
 function normaliseId(id: string | undefined, title: string | undefined, permalink: string | undefined): string | undefined {
@@ -151,7 +154,7 @@ function normalisePost(record: Record<string, unknown>): NormalizedPost | undefi
 
 function normaliseSubreddit(record: Record<string, unknown>): NormalizedSubreddit | undefined {
   const candidate = unwrapCandidate(record);
-  const rawName = firstString(candidate, [["display_name"], ["displayName"], ["name"], ["subredditName"], ["communityName"]]);
+  const rawName = firstString(candidate, [["display_name"], ["displayName"], ["subredditName"], ["communityName"]]);
   const name = cleanSubreddit(rawName);
   if (!name) return undefined;
 
