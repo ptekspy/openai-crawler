@@ -21,7 +21,7 @@ pnpm exec playwright install chromium
 cp .env.example .env
 ```
 
-## Run
+## Run locally
 
 ```bash
 pnpm crawl
@@ -32,6 +32,28 @@ Dashboard:
 ```txt
 http://127.0.0.1:8788
 ```
+
+## Run always-on in WSL
+
+Use the WSL/systemd + Cloudflare Tunnel guide:
+
+```txt
+ops/WINDOWS-WSL-SERVICE.md
+```
+
+This installs the crawler as a systemd service and exposes the protected dashboard at:
+
+```txt
+https://dashboard.paidpolitely.com
+```
+
+The dashboard uses a single master password from:
+
+```env
+CRAWLER_DASHBOARD_MASTER_PASSWORD=use-a-long-random-password
+```
+
+## Dashboard
 
 The dashboard lets you:
 
@@ -123,6 +145,7 @@ Snapshots are saved to `snapshots/` and ignored by git.
 CRAWLER_STATE_PATH=data/state.json
 CRAWLER_DASHBOARD_HOST=127.0.0.1
 CRAWLER_DASHBOARD_PORT=8788
+CRAWLER_DASHBOARD_MASTER_PASSWORD=use-a-long-random-password
 REDDIT_AUTH_STATE=.auth/reddit.json
 CRAWLER_HEADLESS=true
 CRAWLER_SCROLL_STEPS=8
