@@ -28,48 +28,29 @@ Start WSL again and check:
 systemctl --version
 ```
 
-## 2. Install crawler service
+## 2. Prepare `.env`
 
 From the repo directory inside WSL:
 
 ```bash
-chmod +x ops/wsl/install-service.sh
-ops/wsl/install-service.sh
+cp .env.example .env
+nano .env
 ```
 
-The script installs the app to:
-
-```txt
-/opt/openai-crawler
-```
-
-Then edit the env file:
-
-```bash
-nano /opt/openai-crawler/.env
-```
-
-Set a real dashboard password:
+The full setup script fails if any of these are missing or still using placeholder values:
 
 ```env
 CRAWLER_DASHBOARD_MASTER_PASSWORD=use-a-long-random-password
 CRAWLER_DASHBOARD_HOST=127.0.0.1
 CRAWLER_DASHBOARD_PORT=8788
+CRAWLER_STATE_PATH=data/state.json
+REDDIT_AUTH_STATE=.auth/reddit.json
+CLOUDFLARED_TUNNEL_ID=your-tunnel-id
+CLOUDFLARED_TUNNEL_CREDENTIALS_FILE=/etc/cloudflared/tunnel-credentials.json
+CLOUDFLARED_HOSTNAME=dashboard.paidpolitely.com
 ```
 
-Restart:
-
-```bash
-sudo systemctl restart openai-crawler
-```
-
-Check logs:
-
-```bash
-journalctl -u openai-crawler -f
-```
-
-## 3. Install cloudflared
+## 3. Create the Cloudflare Tunnel credentials
 
 Install cloudflared in WSL using Cloudflare's current Linux instructions, then authenticate:
 
@@ -89,45 +70,28 @@ Route the hostname:
 cloudflared tunnel route dns paid-politely-dashboard dashboard.paidpolitely.com
 ```
 
-Copy the example config:
+Make sure `CLOUDFLARED_TUNNEL_ID` and `CLOUDFLARED_TUNNEL_CREDENTIALS_FILE` in `.env` match the tunnel you created.
+
+## 4. Run the full setup
 
 ```bash
-sudo mkdir -p /etc/cloudflared
-sudo cp ops/cloudflared/config.yml.example /etc/cloudflared/config.yml
-sudo nano /etc/cloudflared/config.yml
+chmod +x ops/wsl/setup-all.sh
+ops/wsl/setup-all.sh
 ```
 
-Replace:
+The script will:
 
-```txt
-YOUR_TUNNEL_ID
-/etc/cloudflared/YOUR_TUNNEL_ID.json
-```
+- validate required env vars
+- fail if the dashboard password is still the example value
+- fail if the dashboard is not bound to loopback
+- fail if `cloudflared` or the tunnel credentials file are missing
+- install the app to `/opt/openai-crawler`
+- install dependencies and Playwright Chromium
+- install/restart the `openai-crawler` systemd service
+- write `/etc/cloudflared/config.yml`
+- install/restart the `cloudflared` systemd service
 
-The ingress should point to the crawler dashboard:
-
-```yaml
-ingress:
-  - hostname: dashboard.paidpolitely.com
-    service: http://127.0.0.1:8788
-  - service: http_status:404
-```
-
-Install cloudflared as a service:
-
-```bash
-sudo cloudflared service install
-sudo systemctl enable cloudflared
-sudo systemctl restart cloudflared
-```
-
-Check logs:
-
-```bash
-journalctl -u cloudflared -f
-```
-
-## 4. Start WSL services when Windows logs in
+## 5. Start WSL services when Windows logs in
 
 Systemd keeps the crawler alive while the WSL distro is running. To wake the distro on Windows login, run this from Windows PowerShell in the repo:
 
@@ -143,7 +107,7 @@ openai-crawler
 cloudflared
 ```
 
-## 5. Open the dashboard
+## 6. Open the dashboard
 
 Go to:
 
