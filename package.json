@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "dotenv": "latest",
-    "playwright": "latest",
+    "playwright": "1.55.0",
     "tsx": "latest",
     "zod": "latest"
   },
