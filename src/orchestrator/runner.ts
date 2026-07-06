@@ -4,18 +4,18 @@ import { ApiClient } from "../apiClient.js";
 import { logger } from "../logger.js";
 import { crawlRedditTask } from "../reddit/crawlPage.js";
 import { ingestCrawlResult } from "../state/ingest.js";
+import type { StateStore } from "../state/store.js";
 import type { CrawlerAccount, CrawlerConfig, QueueTask } from "../types.js";
 import { sleep } from "../utils.js";
 import { markPlannerCycle, planDiscoveryTasks, planRecurringMainTasks, pruneOldTasks } from "./planner.js";
 import { claimNextTask, releaseAccount } from "./queue.js";
 import { nextDueAfterTask, nowIso } from "./schedule.js";
-import type { StateStore } from "../state/store.js";
 
 const TASK_LOCK_MS = 10 * 60 * 1000;
 
 export class AutonomousCrawlerRunner {
   private stopped = false;
-  private workerPromises: Promise<void>[] = [];
+  private activeWorkers = new Set<string>();
 
   constructor(
     private readonly config: CrawlerConfig,
@@ -71,10 +71,9 @@ export class AutonomousCrawlerRunner {
       const enabledAccounts = Object.values(state.accounts).filter((account) => account.enabled);
 
       for (const account of enabledAccounts) {
-        const alreadyRunning = this.workerPromises.length > 0 && account.status === "running";
-        if (alreadyRunning) continue;
-        this.workerPromises.push(this.accountWorker(account.id));
-        this.workerPromises = this.workerPromises.filter((promise) => promise !== undefined);
+        if (this.activeWorkers.has(account.id)) continue;
+        this.activeWorkers.add(account.id);
+        void this.accountWorker(account.id).finally(() => this.activeWorkers.delete(account.id));
       }
 
       await sleep(10_000);
