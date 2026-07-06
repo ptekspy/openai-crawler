@@ -118,7 +118,7 @@ export interface CrawlerAccount {
   id: string;
   label: string;
   username?: string;
-  password?: string;
+  loginSecret?: string;
   sessionCookie?: string;
   authStatePath?: string;
   enabled: boolean;
