@@ -29,6 +29,7 @@ export interface CrawlerConfig {
   statePath: string;
   dashboardHost: string;
   dashboardPort: number;
+  dashboardMasterPassword?: string;
   headless: boolean;
   scrollDelayMs: number;
   scrollSteps: number;
