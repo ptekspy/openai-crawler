@@ -127,7 +127,23 @@ Check logs:
 journalctl -u cloudflared -f
 ```
 
-## 4. Open the dashboard
+## 4. Start WSL services when Windows logs in
+
+Systemd keeps the crawler alive while the WSL distro is running. To wake the distro on Windows login, run this from Windows PowerShell in the repo:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+.\ops\windows\register-wsl-startup-task.ps1
+```
+
+The task starts:
+
+```txt
+openai-crawler
+cloudflared
+```
+
+## 5. Open the dashboard
 
 Go to:
 
