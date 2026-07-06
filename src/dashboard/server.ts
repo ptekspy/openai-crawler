@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { URL } from "node:url";
 
@@ -15,13 +16,37 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
 }
 
 function json(res: ServerResponse, status: number, payload: unknown) {
-  res.writeHead(status, { "content-type": "application/json" });
+  res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   res.end(JSON.stringify(payload));
 }
 
 function text(res: ServerResponse, status: number, payload: string, contentType = "text/plain") {
-  res.writeHead(status, { "content-type": contentType });
+  res.writeHead(status, { "content-type": contentType, "cache-control": "no-store" });
   res.end(payload);
+}
+
+function safeEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function allowed(req: IncomingMessage, config: CrawlerConfig) {
+  if (!config.dashboardMasterPassword) return true;
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Basic ")) return false;
+  const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
+  const value = decoded.slice(decoded.indexOf(":") + 1);
+  return safeEqual(value, config.dashboardMasterPassword);
+}
+
+function challenge(res: ServerResponse) {
+  res.writeHead(401, {
+    "www-authenticate": 'Basic realm="Paid Politely Crawler"',
+    "content-type": "text/plain",
+    "cache-control": "no-store",
+  });
+  res.end("Login required");
 }
 
 function publicState(store: StateStore) {
@@ -67,6 +92,11 @@ function publicState(store: StateStore) {
 export function startDashboardServer(config: CrawlerConfig, store: StateStore) {
   const server = http.createServer(async (req, res) => {
     try {
+      if (!allowed(req, config)) {
+        challenge(res);
+        return;
+      }
+
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
 
       if (req.method === "GET" && url.pathname === "/") {
@@ -128,6 +158,7 @@ export function startDashboardServer(config: CrawlerConfig, store: StateStore) {
   server.listen(config.dashboardPort, config.dashboardHost, () => {
     logger.info("Dashboard listening", {
       url: `http://${config.dashboardHost}:${config.dashboardPort}`,
+      authEnabled: Boolean(config.dashboardMasterPassword),
     });
   });
 
