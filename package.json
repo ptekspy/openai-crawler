@@ -8,6 +8,7 @@
     "login": "tsx src/login.ts",
     "crawl": "tsx src/index.ts",
     "crawl:once": "tsx src/index.ts --once",
+    "snapshot": "tsx src/snapshot.ts",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write ."
   },
