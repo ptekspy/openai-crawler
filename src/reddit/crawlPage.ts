@@ -1,10 +1,10 @@
 import { createBrowserSession } from "../browser.js";
 import { logger } from "../logger.js";
-import type { CrawlResult, CrawlTask, CrawlerConfig, NormalizedPost } from "../types.js";
+import type { CrawlerAccount, CrawlResult, CrawlTask, CrawlerConfig, NormalizedPost, NormalizedUser } from "../types.js";
 import { sleep } from "../utils.js";
 import { extractDomPosts } from "./domExtract.js";
 import { attachNetworkCapture } from "./networkCapture.js";
-import { normaliseCapturedPosts } from "./normalise.js";
+import { normaliseCaptured } from "./normalise.js";
 import { redditUrlForTask } from "./urls.js";
 
 function mergePosts(networkPosts: NormalizedPost[], domPosts: NormalizedPost[]): NormalizedPost[] {
@@ -27,15 +27,34 @@ function mergePosts(networkPosts: NormalizedPost[], domPosts: NormalizedPost[]):
   return [...byId.values()];
 }
 
-export async function crawlRedditTask(config: CrawlerConfig, task: CrawlTask): Promise<CrawlResult> {
+function usersFromPosts(posts: NormalizedPost[]): NormalizedUser[] {
+  const seen = new Set<string>();
+  const users: NormalizedUser[] = [];
+
+  for (const post of posts) {
+    if (!post.author) continue;
+    const key = post.author.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    users.push({
+      username: post.author,
+      sourcePostId: post.id,
+      sourceSubreddit: post.subreddit,
+    });
+  }
+
+  return users;
+}
+
+export async function crawlRedditTask(config: CrawlerConfig, task: CrawlTask, account?: CrawlerAccount): Promise<CrawlResult> {
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
   const url = redditUrlForTask(task);
-  const session = await createBrowserSession(config);
+  const session = await createBrowserSession(config, account);
   const capture = attachNetworkCapture(session.page);
 
   try {
-    logger.info("Crawling Reddit task", { task, url });
+    logger.info("Crawling Reddit task", { task, url, accountId: account?.id });
 
     await session.page.goto(url, {
       waitUntil: "domcontentloaded",
@@ -50,7 +69,7 @@ export async function crawlRedditTask(config: CrawlerConfig, task: CrawlTask): P
 
     await session.page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => undefined);
 
-    const networkPosts = normaliseCapturedPosts(capture.payloads);
+    const network = normaliseCaptured(capture.payloads);
     const domPosts = await extractDomPosts(session.page).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       errors.push(message);
@@ -58,34 +77,46 @@ export async function crawlRedditTask(config: CrawlerConfig, task: CrawlTask): P
       return [];
     });
 
-    const posts = mergePosts(networkPosts, domPosts);
+    const posts = mergePosts(network.posts, domPosts);
+    const users = [...network.users, ...usersFromPosts(posts)];
 
     logger.info("Finished Reddit task", {
       task,
+      accountId: account?.id,
       payloads: capture.payloads.length,
-      networkPosts: networkPosts.length,
+      networkPosts: network.posts.length,
       domPosts: domPosts.length,
       posts: posts.length,
+      users: users.length,
+      subreddits: network.subreddits.length,
     });
 
     return {
       task,
+      accountId: account?.id,
       startedAt,
       finishedAt: new Date().toISOString(),
       payloadCount: capture.payloads.length,
       posts,
+      users,
+      subreddits: network.subreddits,
       errors: [...errors, ...capture.errors],
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error("Reddit task failed", { task, message });
+    logger.error("Reddit task failed", { task, accountId: account?.id, message });
+
+    const network = normaliseCaptured(capture.payloads);
 
     return {
       task,
+      accountId: account?.id,
       startedAt,
       finishedAt: new Date().toISOString(),
       payloadCount: capture.payloads.length,
-      posts: normaliseCapturedPosts(capture.payloads),
+      posts: network.posts,
+      users: network.users,
+      subreddits: network.subreddits,
       errors: [...errors, ...capture.errors, message],
     };
   } finally {
