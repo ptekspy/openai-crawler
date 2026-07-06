@@ -5,6 +5,7 @@ dist/
 !.env.example
 .auth/
 .playwright/
+snapshots/
 test-results/
 playwright-report/
 .DS_Store
