@@ -1,0 +1,12 @@
+# Copy to /etc/cloudflared/config.yml after creating a Cloudflare Tunnel.
+# Replace the tunnel id and credentials file path with your real values.
+
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /etc/cloudflared/YOUR_TUNNEL_ID.json
+
+protocol: http2
+
+ingress:
+  - hostname: dashboard.paidpolitely.com
+    service: http://127.0.0.1:8788
+  - service: http_status:404
