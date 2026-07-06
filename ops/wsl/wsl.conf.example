@@ -1,0 +1,5 @@
+# Copy to /etc/wsl.conf inside the WSL distro, then from Windows run:
+# wsl --shutdown
+
+[boot]
+systemd=true
