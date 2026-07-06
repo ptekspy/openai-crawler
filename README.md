@@ -1,17 +1,17 @@
 # OpenAI Crawler
 
-A Playwright-based Reddit crawler worker for the `ptekspy/rdaresgonewild` data pipeline.
+A local autonomous Playwright Reddit crawler for the `ptekspy/rdaresgonewild` / Paid Politely pipeline.
 
-The goal is to remove the browser extension and replace it with a server-side browser worker that can:
+It replaces the browser extension with:
 
-- keep an authenticated Reddit browser session
-- crawl priority subreddits on `best` and `new`
-- crawl Reddit home on `best` and `new`
-- fetch extra subreddit/user targets from an API when available
-- fall back to configured local targets when the API is not ready
-- capture Reddit network JSON payloads first
-- fall back to DOM extraction if needed
-- send normalized crawl results to your API, or log dry-run results locally
+- a persistent local state file
+- a local monitoring dashboard
+- configurable main subreddits
+- multiple account crawler instances
+- a shared task queue so accounts do not duplicate work
+- scheduled main-target crawling
+- idle discovery crawling across users and verified NSFW subreddits
+- graph ingestion: posts -> users -> posts -> subreddits -> more posts/users
 
 ## Setup
 
@@ -21,39 +21,95 @@ pnpm exec playwright install chromium
 cp .env.example .env
 ```
 
-## Save Reddit login session
-
-Run this once locally:
-
-```bash
-pnpm login
-```
-
-A visible Chromium window opens. Log in to Reddit manually, then press Enter in the terminal.
-
-This saves the browser session to:
-
-```txt
-.auth/reddit.json
-```
-
-That file is intentionally ignored by git.
-
-## Run one crawler cycle
-
-```bash
-pnpm crawl:once
-```
-
-## Run continuously
+## Run
 
 ```bash
 pnpm crawl
 ```
 
-## Save a Reddit HTML snapshot
+Dashboard:
 
-This is only for debugging/tuning selectors:
+```txt
+http://127.0.0.1:8788
+```
+
+The dashboard lets you:
+
+- add accounts
+- add a Reddit session cookie account
+- enable/disable accounts
+- add/enable/disable main subreddits
+- watch queue, runs, accounts and graph counts
+
+## Main subreddit schedule
+
+For Reddit home and all enabled main subreddits:
+
+```txt
+best: daily at noon UTC
+new: every hour
+```
+
+Subreddit details are scheduled at least once per day.
+
+If an account has no due main work, it claims discovery work:
+
+```txt
+candidate subreddit details -> verified NSFW subreddits -> subreddit new feeds -> discovered user submitted pages
+```
+
+## NSFW-only subreddit tracking
+
+The crawler does not promote a discovered subreddit into the tracked subreddit set until subreddit details show `over18: true`.
+
+Unknown subreddits first go into `subredditCandidates` and get a details task. If details show `over18: false`, the candidate is rejected.
+
+## Account auth
+
+You can add accounts from the dashboard with either:
+
+```txt
+username + password field
+reddit_session cookie
+```
+
+The current production-safe path is the `reddit_session` cookie or the manual login state from:
+
+```bash
+pnpm login
+```
+
+Manual login saves:
+
+```txt
+.auth/reddit.json
+```
+
+Local state is saved to:
+
+```txt
+data/state.json
+```
+
+Both are ignored by git.
+
+## Editable main targets
+
+The default targets live in:
+
+```txt
+config/default-tasks.json
+```
+
+You can also override the main list from `.env`:
+
+```env
+CRAWLER_PRIORITY_SUBREDDITS=["daresgonewild","ChangingInPublic"]
+```
+
+## HTML snapshots
+
+Only needed for debugging/tuning selectors:
 
 ```bash
 pnpm snapshot https://www.reddit.com/r/daresgonewild/new/
@@ -61,42 +117,22 @@ pnpm snapshot https://www.reddit.com/r/daresgonewild/new/
 
 Snapshots are saved to `snapshots/` and ignored by git.
 
-## Editable priority targets
-
-The default 10 priority targets live in:
-
-```txt
-config/default-tasks.json
-```
-
-Current defaults:
-
-```json
-[
-  "daresgonewild",
-  "ChangingInPublic",
-  "OnlyOneNaked",
-  "RealGirls",
-  "normalnudes",
-  "gonewild",
-  "ratemyboobs",
-  "progresspics",
-  "amiugly",
-  "selfie"
-]
-```
-
-You can also override/add targets from `.env`:
+## Important env
 
 ```env
-CRAWLER_PRIORITY_SUBREDDITS=["daresgonewild","ChangingInPublic"]
-CRAWLER_EXTRA_SUBREDDITS=someSub,anotherSub
-CRAWLER_EXTRA_USERS=someUser,anotherUser
+CRAWLER_STATE_PATH=data/state.json
+CRAWLER_DASHBOARD_HOST=127.0.0.1
+CRAWLER_DASHBOARD_PORT=8788
+REDDIT_AUTH_STATE=.auth/reddit.json
+CRAWLER_HEADLESS=true
+CRAWLER_SCROLL_STEPS=8
+CRAWLER_SCROLL_DELAY_MS=1200
+CRAWLER_TASK_DELAY_MS=5000
 ```
 
 ## API handoff
 
-If `CRAWLER_API_URL` is empty, the worker runs in dry-run mode.
+If `CRAWLER_API_URL` is empty, the worker logs/dry-runs locally.
 
 When configured, it calls:
 
@@ -105,67 +141,4 @@ GET  {CRAWLER_API_URL}{CRAWLER_API_TARGETS_PATH}
 POST {CRAWLER_API_URL}{CRAWLER_API_IMPORT_PATH}
 ```
 
-Defaults:
-
-```env
-CRAWLER_API_TARGETS_PATH=/api/crawler/targets
-CRAWLER_API_IMPORT_PATH=/api/crawler/import
-```
-
-Expected targets response shape:
-
-```json
-{
-  "subreddits": ["daresgonewild"],
-  "users": ["SomeRedditUser"]
-}
-```
-
-Import payload shape:
-
-```ts
-interface CrawlResult {
-  task: CrawlTask;
-  startedAt: string;
-  finishedAt: string;
-  payloadCount: number;
-  posts: NormalizedPost[];
-  errors: string[];
-}
-```
-
-## Environment
-
-See `.env.example` for all options.
-
-Important ones:
-
-```env
-REDDIT_AUTH_STATE=.auth/reddit.json
-CRAWLER_HEADLESS=true
-CRAWLER_SCROLL_STEPS=8
-CRAWLER_SCROLL_DELAY_MS=1200
-CRAWLER_TASK_DELAY_MS=5000
-CRAWLER_CYCLE_DELAY_MS=300000
-CRAWLER_API_URL=
-CRAWLER_API_TOKEN=
-```
-
-## Do we need Reddit HTML?
-
-Not initially.
-
-The crawler prioritises Reddit's network JSON responses because that is usually less fragile than scraping visible cards from the page.
-
-Reddit HTML is useful only if:
-
-- the normalizer misses fields you care about
-- the network payload changes
-- a subreddit page renders data that is not present in captured JSON
-- we need to tune the DOM fallback selectors
-
-A saved sample from one loaded subreddit page would be useful later, but it is not required for this first version. Use `pnpm snapshot <reddit-url>` when we need one.
-
-## Notes
-
-Keep crawl delays conservative. This is a browser worker, not a high-volume scraper. It should behave like a logged-in user browsing pages at a reasonable pace.
+The local dashboard and queue work without the API.
